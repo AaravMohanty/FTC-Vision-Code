@@ -363,7 +363,7 @@ public class AutonomousBlueLeft extends LinearOpMode {
         Mat YCrCb = new Mat();
         Mat Cb = new Mat();
         Mat YCrCB = new Mat();
-        Mat CB = new Mat();
+        Mat CR = new Mat();
         int average, average2;
 
 
@@ -377,7 +377,7 @@ public class AutonomousBlueLeft extends LinearOpMode {
             Core.extractChannel(YCrCb, Cb, 1);
 
             Imgproc.cvtColor(input, YCrCB, Imgproc.COLOR_RGB2YCrCb);
-            Core.extractChannel(YCrCB, CB, 1);
+            Core.extractChannel(YCrCB, CR, 1);
 
 
         }
@@ -387,7 +387,7 @@ public class AutonomousBlueLeft extends LinearOpMode {
             inputToCb(firstFrame);
 
             region1_Cb = Cb.submat(new Rect(region1_pointA, region1_pointB));
-            region2_Cb = CB.submat(new Rect(region2_pointA, region2_pointB));
+            region2_Cb = CR.submat(new Rect(region2_pointA, region2_pointB));
         }
 
         @Override
