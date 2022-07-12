@@ -1,0 +1,449 @@
+package org.firstinspires.ftc.teamcode.states;
+
+
+import com.qualcomm.hardware.bosch.BNO055IMU;
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.CRServo;
+import com.qualcomm.robotcore.hardware.ColorSensor;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
+
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
+import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
+import org.opencv.core.Core;
+import org.opencv.core.Mat;
+import org.opencv.core.Point;
+import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
+import org.opencv.imgproc.Imgproc;
+import org.openftc.easyopencv.OpenCvCamera;
+import org.openftc.easyopencv.OpenCvCameraFactory;
+import org.openftc.easyopencv.OpenCvCameraRotation;
+import org.openftc.easyopencv.OpenCvPipeline;
+
+@Autonomous
+public class AutonomousBlueLeft extends LinearOpMode {
+    OpenCvCamera Webcam;
+    FreightFrenzyPipeline pipeline;
+    DcMotor fl, bl, br, fr, arm, linkage;
+    ColorSensor colour;
+    Servo flickr2;
+    BNO055IMU imu;
+    Orientation angles;
+    public static final double circumference = 11.8677242;
+    public static final double TICKS_COUNT = 384.5;
+    public static double rotationsNeeded;
+    DcMotor rotate;
+    Servo clamp;
+
+    @Override
+    public void runOpMode() {
+        int cameraMonitorViewId = hardwareMap.appContext.getResources().getIdentifier("cameraMonitorViewId", "id", hardwareMap.appContext.getPackageName());
+        Webcam = OpenCvCameraFactory.getInstance().createWebcam(hardwareMap.get(WebcamName.class, "Webcam 1"), cameraMonitorViewId);
+        pipeline = new FreightFrenzyPipeline();
+        Webcam.setPipeline(pipeline);
+
+
+        Webcam.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener() {
+            @Override
+            public void onOpened() {
+                Webcam.startStreaming(1280, 720, OpenCvCameraRotation.UPRIGHT);
+
+            }
+
+            @Override
+            public void onError(int errorCode) {
+            }
+        });
+        fl = hardwareMap.dcMotor.get("front_left");
+        //reversing left side
+        fl.setDirection(DcMotorSimple.Direction.REVERSE);
+        fl.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        bl = hardwareMap.dcMotor.get("back_left");
+        bl.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        bl.setDirection(DcMotorSimple.Direction.REVERSE);
+        //reversing left side
+        fr = hardwareMap.dcMotor.get("front_right");
+        fr.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        br = hardwareMap.dcMotor.get("back_right");
+        br.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
+        //using the parameter angle unit to set the angle unit in degrees.
+        parameters.angleUnit = BNO055IMU.AngleUnit.DEGREES;
+        //calibrating the imu to ensure all the values are 0. Not necessary as the hub does a good job at this but doesn't hurt to add.
+        parameters.calibrationDataFile = "BNO055IMUCalibration.json";
+        
+
+        flickr2 = hardwareMap.servo.get("Flickr2");
+        //servo thats stationary until flick
+
+        //our control hub's imu
+        imu = hardwareMap.get(BNO055IMU.class, "imu");
+
+        imu.initialize(parameters);
+
+        colour = (ColorSensor) hardwareMap.opticalDistanceSensor.get("color_distance");
+        clamp=hardwareMap.servo.get("clamp");
+        rotate = hardwareMap.dcMotor.get("rotate");
+        rotate.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        arm = hardwareMap.dcMotor.get("Arm");
+        linkage = hardwareMap.dcMotor.get("Linkage");
+        arm.setDirection(DcMotorSimple.Direction.REVERSE);
+        arm.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        linkage.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        waitForStart();
+
+        while (opModeIsActive()) {
+
+
+            telemetry.addData("Middle Barcode", pipeline.middle);
+            telemetry.addData("Average", pipeline.getAnalysis1());
+
+
+            telemetry.addData("Left Barcode", pipeline.left);
+            telemetry.addData("Average", pipeline.getAnalysis2());
+
+            telemetry.addData("Right Barcode", pipeline.right);
+            telemetry.update();
+            
+
+
+        }
+
+
+    }
+
+
+    public void straightEncoder(double distance, double power) {
+        fl.setDirection(DcMotorSimple.Direction.REVERSE);
+        bl.setDirection(DcMotorSimple.Direction.REVERSE);
+        br.setDirection(DcMotorSimple.Direction.FORWARD);
+        fr.setDirection(DcMotorSimple.Direction.FORWARD);
+        //resetting our encoders so all their values are 0
+        resetEncoders();
+
+        //figuring out the number of rotations the wheel needs to turn based on how far we need to travel and how much distance one revolution
+        //(circumference) of the wheel takes us
+        rotationsNeeded = distance / circumference;
+        //multiplying the number of rotations by the amount of ticks each rotation gives us. Cast to an int because this is our target position and
+        //target position can only be an int which can cause slight overshooting or undershooting based on what it rounds decimals to.
+        int ticksNeeded = (int) (rotationsNeeded * TICKS_COUNT);
+
+        fl.setTargetPosition(ticksNeeded);
+        bl.setTargetPosition(ticksNeeded);
+        br.setTargetPosition(ticksNeeded);
+        fr.setTargetPosition(ticksNeeded);
+
+
+        fl.setPower(power);
+        bl.setPower(power);
+        br.setPower(power);
+        fr.setPower(power);
+        runToPos();
+
+        while (fl.isBusy() || fr.isBusy() || br.isBusy() || bl.isBusy()) {
+            telemetry.addData("On straight path for ", distance);
+            telemetry.addData("Front Left Encoder Value", fl.getCurrentPosition());
+            telemetry.addData("Front Right Encoder Value", fr.getCurrentPosition());
+            telemetry.addData("Back Left Encoder Value", bl.getCurrentPosition());
+            telemetry.addData("Back Right Encoder Value", br.getCurrentPosition());
+
+            telemetry.addData("Target", ticksNeeded);
+            telemetry.update();
+
+        }
+        if (fl.getCurrentPosition() == ticksNeeded || bl.getCurrentPosition() == ticksNeeded || br.getCurrentPosition() == ticksNeeded
+                || fr.getCurrentPosition() == ticksNeeded) {
+            fl.setPower(0);
+            bl.setPower(0);
+            br.setPower(0);
+            fr.setPower(0);
+        }
+
+
+        runWithEncoders();
+    }
+
+    public void strafeRightEncoder(double distance, double power) {
+        fl.setDirection(DcMotorSimple.Direction.REVERSE);
+        bl.setDirection(DcMotorSimple.Direction.REVERSE);
+        br.setDirection(DcMotorSimple.Direction.FORWARD);
+        fr.setDirection(DcMotorSimple.Direction.FORWARD);
+        resetEncoders();
+        runWithEncoders();
+
+        telemetry.addData("Front Left Encoder Value", fl.getCurrentPosition());
+        telemetry.addData("Front Right Encoder Value", fr.getCurrentPosition());
+        telemetry.addData("Back Left Encoder Value", bl.getCurrentPosition());
+        telemetry.addData("Back Right Encoder Value", br.getCurrentPosition());
+
+        rotationsNeeded = distance / circumference;
+
+        int ticksNeeded = (int) (rotationsNeeded * TICKS_COUNT);
+
+
+        fl.setTargetPosition(ticksNeeded);
+        bl.setTargetPosition(-ticksNeeded);
+        br.setTargetPosition(ticksNeeded);
+        fr.setTargetPosition(-ticksNeeded);
+
+        fl.setPower(power);
+        bl.setPower(power);
+        br.setPower(power);
+        fr.setPower(power);
+
+        runToPos();
+
+
+        while (fl.isBusy() || fr.isBusy() || br.isBusy() || bl.isBusy()) {
+           /* telemetry.addData("On strafe path for ", distance);
+            telemetry.update();*/
+        }
+
+        fl.setPower(0);
+        bl.setPower(0);
+        br.setPower(0);
+        fr.setPower(0);
+
+        runWithEncoders();
+
+    }
+
+    public void turnLeft(double turnAngle, double timeoutS) {
+        //sleeping because the imu has a slight delay in update time/action time
+        sleep(250);
+        //the way our imu is oriented. Ours is facing to the top which means the z axis comes straight up at us.
+        angles = imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
+        //variables
+        double speed = 1;
+        double oldDegreesLeft = turnAngle;
+        double scaledSpeed = speed;
+        //angles.firstAngle gets us the heading of the robot. What this is doing is adding our heading and the number of degrees we want to turn to get our
+        //target heading
+        double targetHeading = angles.firstAngle + turnAngle;
+        double oldAngle = angles.firstAngle;
+
+        //has range from -180 to 180 which is why we add 360 if its out of that range because coterminal angles!! PRECALC HOORAY!!
+        if (targetHeading < -180) {
+            targetHeading += 360;
+        }
+        if (targetHeading > 180) {
+            targetHeading -= 360;
+        }
+
+        //giving us the number of degrees left for the robot to turn.
+        //Math.signum is returning 1.0 if our target position is less than the first angle we started with,
+        // 0 if our target position is more than the first angle, and 1/2 if we have reached our target position
+        double degreesLeft = ((Math.signum(angles.firstAngle - targetHeading) + 1) / 2)
+                //figuring out how many degrees we still need to turn. Since this program is only for turning left, if the target pos we need to get to
+                //is greater than our current position we are turning left we are multiplying the value returned by this function by 0
+                // as this is only accounting for if we essentially need to have gone - degrees to reach our targetpos.
+                //For example if my targetpos is 40 and my currentpos is 30 then the Math.signum will return a 0 and this Math.abs function will return 350.
+                //We dont want it to be going 350 degrees but rather 10 degrees but since we are only trying to robot left this function is required.
+                // For example if our targetpos is 30 degrees and my currentpos is 40 degrees then we need to technically rotate a distance of -10 degrees
+                // or rotate right 10 degrees but since we only want to rotate left then this function will print out 1*350 which is the amount
+                // we need to rotate in the left direction
+                * (360 - Math.abs(angles.firstAngle - targetHeading))
+                //This below function is kind of the "else" of the other statement. It is returning 0 if our targetpos is less than our currentpos
+                //returning 1 if our targetpos is more than our currentpos and returning 1/2 if our currentpos=targetpos
+                //this function is p much allowing us to turn the lesser distance if possible. For example if our targetpos is 30 and currentpos is 10
+                // this will print out 20 while the previous function will print out 0 which will tell us that our robot needs to turn 20 degrees
+                //if we need to turn in essentially a negative value, the other function handles it for us and finds the corresponding positive value of turn
+                //ONCE AGAIN COTERMINAL ANGLES
+                + (Math.signum(targetHeading - angles.firstAngle) + 1) / 2
+                * Math.abs(angles.firstAngle - targetHeading);
+
+        //resetting start time since calling this method so we can use the time function in the next piece of code to travel the distance
+        resetStartTime();
+
+        //Checking whether the robot has reached targetpos and if the opmode is still active.
+        while (opModeIsActive() && time < timeoutS && degreesLeft > 1 && oldDegreesLeft - degreesLeft >= 0) {
+
+            //scaling our speed to make it more controlled. Proportionate to the distance we need to turn
+            scaledSpeed = degreesLeft / (100 + degreesLeft) * speed;
+            if (scaledSpeed > 1) {
+                scaledSpeed = 0.5;
+            }
+            //setting power to the motor by scaling the speed it needs to go based on how far it is from the target heading. kinda like a kP controller.
+            fl.setPower(-scaledSpeed);
+            bl.setPower(-scaledSpeed);
+            fr.setPower(scaledSpeed);
+            br.setPower(scaledSpeed);
+
+            telemetry.addData("time", time);
+            telemetry.addData("timeout", timeoutS);
+            telemetry.addData("Speed", scaledSpeed);
+            telemetry.addData("Degrees Left", degreesLeft);
+            telemetry.update();
+
+
+            //rest of the code from here onwards is resetting all our variables to be used for the next time we run this method.
+            angles = imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
+            oldDegreesLeft = degreesLeft;
+
+            degreesLeft = ((Math.signum(angles.firstAngle - targetHeading) + 1) / 2) * (360 - Math.abs(angles.firstAngle - targetHeading)) + (Math.signum(targetHeading - angles.firstAngle) + 1) / 2 * Math.abs(angles.firstAngle - targetHeading);
+
+            if (Math.abs(angles.firstAngle - oldAngle) < 1) {
+                speed *= 1.1;
+            }
+
+            oldAngle = angles.firstAngle;
+        }
+
+        fl.setPower(0);
+        bl.setPower(0);
+        fr.setPower(0);
+        br.setPower(0);
+
+    }
+
+    public void resetEncoders() {
+        fl.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        bl.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        fr.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        br.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+    }
+
+    public void runToPos() {
+        fl.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        bl.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        br.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        fr.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+    }
+
+    public void runWithEncoders() {
+        fl.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        bl.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        fr.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        br.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+    }
+
+
+    public static class FreightFrenzyPipeline extends OpenCvPipeline {
+
+        public enum OBJECTS {
+            YES,
+            NO
+        }
+
+
+        static final Scalar OrangeRed = new Scalar(255, 165, 0);
+        //middle obj
+        static final Point REGION1ANCHOR_POINT = new Point(875, 50);
+
+
+        static final Scalar P = new Scalar(30, 10, 2);
+        //left obj
+        static final Point REGION2ANCHOR_POINT = new Point(200, 50);
+
+
+        Point region2_pointA = new Point(
+                REGION2ANCHOR_POINT.x,
+                REGION2ANCHOR_POINT.y);
+        Point region2_pointB = new Point(
+                REGION2ANCHOR_POINT.x + 300,
+                REGION2ANCHOR_POINT.y + 300);
+
+
+        Point region1_pointA = new Point(
+                REGION1ANCHOR_POINT.x,
+                REGION1ANCHOR_POINT.y);
+        Point region1_pointB = new Point(
+                REGION1ANCHOR_POINT.x + 300,
+                REGION1ANCHOR_POINT.y + 300);
+
+
+        Mat region1_Cb, region2_Cb;
+        Mat YCrCb = new Mat();
+        Mat Cb = new Mat();
+        Mat YCrCB = new Mat();
+        Mat CB = new Mat();
+        int average, average2;
+
+
+        public FreightFrenzyPipeline.OBJECTS middle = OBJECTS.NO;
+        public FreightFrenzyPipeline.OBJECTS left = OBJECTS.NO;
+        public FreightFrenzyPipeline.OBJECTS right = OBJECTS.NO;
+
+
+        void inputToCb(Mat input) {
+            Imgproc.cvtColor(input, YCrCb, Imgproc.COLOR_RGB2YCrCb);
+            Core.extractChannel(YCrCb, Cb, 1);
+
+            Imgproc.cvtColor(input, YCrCB, Imgproc.COLOR_RGB2YCrCb);
+            Core.extractChannel(YCrCB, CB, 1);
+
+
+        }
+
+        @Override
+        public void init(Mat firstFrame) {
+            inputToCb(firstFrame);
+
+            region1_Cb = Cb.submat(new Rect(region1_pointA, region1_pointB));
+            region2_Cb = CB.submat(new Rect(region2_pointA, region2_pointB));
+        }
+
+        @Override
+        public Mat processFrame(Mat input) {
+            inputToCb(input);
+
+            average = (int) Core.mean(region1_Cb).val[0];
+            average2 = (int) Core.mean(region2_Cb).val[0];
+            Imgproc.rectangle(
+                    input,
+                    region1_pointA,
+                    region1_pointB,
+                    OrangeRed,
+                    -1
+            );
+
+            Imgproc.rectangle(
+                    input,
+                    region2_pointA,
+                    region2_pointB,
+                    P,
+                    -1
+            );
+
+
+            middle = FreightFrenzyPipeline.OBJECTS.NO;
+            left = FreightFrenzyPipeline.OBJECTS.NO;
+            right = FreightFrenzyPipeline.OBJECTS.NO;
+
+            // Middle obj
+            if (average <= 122) {
+                middle = FreightFrenzyPipeline.OBJECTS.YES;
+            } else {
+                middle = FreightFrenzyPipeline.OBJECTS.NO;
+            }
+            //left obj
+            if (average2 <= 122) {
+                left = FreightFrenzyPipeline.OBJECTS.YES;
+            } else {
+                left = FreightFrenzyPipeline.OBJECTS.NO;
+            }
+            //right
+            if (average > 122 && average2 > 122) {
+                right = FreightFrenzyPipeline.OBJECTS.YES;
+            } else if (!(average > 122 && average2 > 122)) {
+                right = FreightFrenzyPipeline.OBJECTS.NO;
+            }
+            return input;
+        }
+
+        public int getAnalysis1() {
+            return average;
+        }
+
+        public int getAnalysis2() {
+            return average2;
+        }
+    }
+}
